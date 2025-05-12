@@ -16,10 +16,10 @@ import (
 const (
 	screenWidthPx  = 800
 	screenHeightPx = 600
-	particleCount  = 2000
-	particleRadius = 5
+	particleCount  = 3000
+	particleRadius = 2
 	gravityY       = 0.098
-	gravityX       = -0.005
+	gravityX       = 0.0
 )
 
 type Particle struct {
@@ -141,49 +141,97 @@ func (g *Game) Update() error {
 	}
 
 	const collisionIterations = 3
+	// A spatial grid
+	// lets now see how it works
+	// Basically we are going to create a grid and then check the
+	//  neighboring cells for collisions
+	// This will help us to avoid checking all the particles for collisions
+	const gridSize = 5
+	grid := make(map[int]map[int][]*Particle)
+
+	for i := range g.particles {
+		p := &g.particles[i]
+		cellX := int(p.X) / gridSize
+		cellY := int(p.Y) / gridSize
+
+		if grid[cellX] == nil {
+			grid[cellX] = make(map[int][]*Particle)
+		}
+		grid[cellX][cellY] = append(grid[cellX][cellY], p)
+	}
+
 	for iter := 0; iter < collisionIterations; iter++ {
-		for i := range g.particles {
-			for j := i + 1; j < len(g.particles); j++ {
-				p1 := &g.particles[i]
-				p2 := &g.particles[j]
+		for cellX, column := range grid {
+			for cellY, cellParticles := range column {
+				for i := range cellParticles {
+					p1 := cellParticles[i]
 
-				dx := p1.X - p2.X
-				dy := p1.Y - p2.Y
-				distSquared := dx*dx + dy*dy
+					for dx := -1; dx <= 1; dx++ {
+						for dy := -1; dy <= 1; dy++ {
+							neighborX := cellX + dx
+							neighborY := cellY + dy
 
-				minDist := 2.0 * float64(particleRadius)
-				if distSquared < minDist*minDist {
-					dist := math.Sqrt(distSquared)
+							if neighborColumn, exists := grid[neighborX]; exists {
+								if neighborParticles, exists := neighborColumn[neighborY]; exists {
+									for j := range neighborParticles {
+										p2 := neighborParticles[j]
 
-					nx := dx / dist
-					ny := dy / dist
+										if p1 == p2 {
+											continue
+										}
 
-					overlap := minDist - dist
+										dx := p1.X - p2.X
+										dy := p1.Y - p2.Y
+										distSquared := dx*dx + dy*dy
 
-					moveX := nx * overlap * 0.5
-					moveY := ny * overlap * 0.5
+										minDist := 2.0 * float64(particleRadius)
+										if distSquared >= minDist*minDist {
+											continue
+										}
 
-					p1.X += moveX
-					p1.Y += moveY
-					p2.X -= moveX
-					p2.Y -= moveY
+										dist := math.Sqrt(distSquared)
+										if dist == 0 {
+											continue
+										}
 
-					v1n := p1.VelX*nx + p1.VelY*ny
-					v2n := p2.VelX*nx + p2.VelY*ny
+										nx := dx / dist
+										ny := dy / dist
 
-					const restitution = 0.9
-					v1nNew := (v1n*(1-restitution) + v2n*(1+restitution)) / 2
-					v2nNew := (v2n*(1-restitution) + v1n*(1+restitution)) / 2
+										overlap := minDist - dist
 
-					dvx1 := (v1nNew - v1n) * nx
-					dvy1 := (v1nNew - v1n) * ny
-					dvx2 := (v2nNew - v2n) * nx
-					dvy2 := (v2nNew - v2n) * ny
+										moveX := nx * overlap * 0.5
+										moveY := ny * overlap * 0.5
 
-					p1.VelX += dvx1
-					p1.VelY += dvy1
-					p2.VelX += dvx2
-					p2.VelY += dvy2
+										p1.X += moveX
+										p1.Y += moveY
+										p2.X -= moveX
+										p2.Y -= moveY
+
+										v1n := p1.VelX*nx + p1.VelY*ny
+										v2n := p2.VelX*nx + p2.VelY*ny
+
+										if v1n-v2n > 0 {
+											continue
+										}
+
+										const restitution = 0.9
+										v1nNew := (v1n*(1-restitution) + v2n*(1+restitution)) / 2
+										v2nNew := (v2n*(1-restitution) + v1n*(1+restitution)) / 2
+
+										dvx1 := (v1nNew - v1n) * nx
+										dvy1 := (v1nNew - v1n) * ny
+										dvx2 := (v2nNew - v2n) * nx
+										dvy2 := (v2nNew - v2n) * ny
+
+										p1.VelX += dvx1
+										p1.VelY += dvy1
+										p2.VelX += dvx2
+										p2.VelY += dvy2
+									}
+								}
+							}
+						}
+					}
 				}
 			}
 		}
